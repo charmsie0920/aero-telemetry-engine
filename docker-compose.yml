@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-aero}
+      POSTGRES_USER: ${POSTGRES_USER:-aero}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aero}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aero}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ingestion:
+  #   build: ./src/Ingestion/Ingestion.Worker
+  #   env_file: .env
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+
+  # inference:
+  #   build: ./services/inference
+  #   env_file: .env
+  #   depends_on:
+  #     - postgres
+
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   ports:
+  #     - "3000:3000"
+  #   volumes:
+  #     - ./grafana/provisioning:/etc/grafana/provisioning
+
+volumes:
+  pgdata:

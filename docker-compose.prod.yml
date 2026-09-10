@@ -1,0 +1,16 @@
+# Overrides for EC2 deployment: real Supabase connection (no local postgres),
+# images pulled from ECR, Grafana exposed behind login.
+services:
+  # ingestion:
+  #   image: ${ECR_REGISTRY}/aero-ingestion:${IMAGE_TAG:-latest}
+
+  # inference:
+  #   image: ${ECR_REGISTRY}/aero-inference:${IMAGE_TAG:-latest}
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
