@@ -2,15 +2,17 @@ services:
   postgres:
     image: postgres:17
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-aero}
-      POSTGRES_USER: ${POSTGRES_USER:-aero}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aero}
+      # LOCAL_* so the Supabase POSTGRES_* values in .env don't leak into the dev container
+      POSTGRES_DB: ${LOCAL_POSTGRES_DB:-aero}
+      POSTGRES_USER: ${LOCAL_POSTGRES_USER:-aero}
+      POSTGRES_PASSWORD: ${LOCAL_POSTGRES_PASSWORD:-aero}
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aero}"]
+      test: ["CMD-SHELL", "pg_isready -U ${LOCAL_POSTGRES_USER:-aero} -d ${LOCAL_POSTGRES_DB:-aero}"]
       interval: 5s
       timeout: 5s
       retries: 10
