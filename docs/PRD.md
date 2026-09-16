@@ -11,8 +11,8 @@
 
 ```
 PHASE:          0 — Foundation
-CURRENT TASK:   P0.1
-LAST UPDATED:   2026-09-10
+CURRENT TASK:   P0.6
+LAST UPDATED:   2026-09-16
 DONE SINCE LAST UPDATE:
 BLOCKERS:       none
 OPEN QUESTIONS:
@@ -74,33 +74,89 @@ A system that continuously ingests live aircraft position data from the OpenSky 
 
 ## 4. Architecture
 
-### 4.1 Diagram
+### 4.1 Diagrams
+
+The architecture is three separate pictures, because they happen on different timelines:
+
+| Diagram | When it happens |
+|---|---|
+| **A. How data flows** (the main one) | Continuously, while the system runs |
+| **B. How the model is made** | Occasionally, offline on a laptop |
+| **C. How code gets to the server** | On every push to `main` |
+
+#### A. How data flows (the main diagram)
+
+Arrows show which way the data moves. The technology is in *italics* under each box.
 
 ```mermaid
 flowchart LR
-    OS[OpenSky REST API<br/>OAuth2] -->|poll every 30s| ING
+    SKY["OpenSky Network<br/><i>public live flight data</i>"]
 
-    subgraph EC2[AWS EC2 — Docker Compose]
-        ING[Ingestion Worker<br/>.NET 10]
-        INF[Inference Service<br/>Python / FastAPI / ONNX]
-        ARC[Archiver Job<br/>Python]
-        GRA[Grafana]
+    subgraph SERVER["Our server — one AWS EC2 machine"]
+        COLLECT["① Collector<br/><i>.NET</i><br/>fetches and cleans positions"]
+        DETECT["③ Anomaly Detector<br/><i>Python + ML model</i><br/>flags unusual flights"]
+        ARCHIVE["④ Archiver<br/><i>Python</i><br/>moves old data out"]
+        DASH["⑤ Dashboard<br/><i>Grafana</i>"]
     end
 
-    ING -->|batched binary COPY| DB[(Supabase Postgres 17<br/>partitioned by time)]
-    INF -->|read recent windows| DB
-    INF -->|write anomaly scores| DB
-    ARC -->|read old partitions| DB
-    ARC -->|write Parquet| S3[(AWS S3<br/>archive + training data)]
-    S3 -->|training data| TRAIN[Offline training<br/>PyTorch, laptop/notebook]
-    TRAIN -->|ONNX model + metadata| S3
-    S3 -->|load model at startup| INF
-    GRA -->|queries| DB
+    DB[("② Database<br/><i>Supabase Postgres</i><br/>last 48 h of flights<br/>+ anomaly flags")]
+    LAKE[("Long-term storage<br/><i>AWS S3</i><br/>everything older")]
+    USER(("Viewer"))
 
-    GH[GitHub Actions] -->|build, test, scan, push| ECR[(AWS ECR)]
-    GH -->|deploy via SSM| EC2
-    TF[Terraform] -->|provisions| EC2
+    SKY -->|"every 30 s:<br/>aircraft positions"| COLLECT
+    COLLECT -->|"saves positions"| DB
+    DB -->|"every 60 s:<br/>recent flight paths"| DETECT
+    DETECT -->|"anomaly scores"| DB
+    DB -->|"daily:<br/>data older than 48 h"| ARCHIVE
+    ARCHIVE -->|"compressed files"| LAKE
+    DB -->|"flights, anomalies,<br/>health stats"| DASH
+    DASH -->|"live map + alerts"| USER
 ```
+
+**In plain words:**
+
+1. Every 30 seconds the **Collector** asks OpenSky where every aircraft in our region is. It throws out bad records and saves the rest.
+2. The **Database** keeps only the last 48 hours, so it stays small and fast.
+3. Every 60 seconds the **Anomaly Detector** reads each aircraft's recent path, scores how unusual it looks, and writes the score back.
+4. Once a day the **Archiver** copies data older than 48 hours to cheap S3 storage, checks the copy is complete, and then deletes it from the database.
+5. The **Dashboard** is what the viewer sees: a live map of aircraft, a list of flagged flights, and panels showing whether the pipeline is healthy.
+
+**The key design decision:** the Collector and the Detector never talk to each other directly. They only share the database. If the ML side crashes, data collection carries on, and scoring catches up when the Detector comes back.
+
+#### B. How the model is made (offline, occasionally)
+
+```mermaid
+flowchart LR
+    LAKE[("Long-term storage<br/><i>AWS S3</i><br/>historical flights")]
+    TRAIN["Train and evaluate model<br/><i>PyTorch, on a laptop</i>"]
+    MODEL[("Model file<br/><i>stored in S3</i>")]
+    DETECT["Anomaly Detector<br/><i>on the server</i>"]
+
+    LAKE -->|"training data"| TRAIN
+    TRAIN -->|"exports trained model"| MODEL
+    MODEL -->|"loaded at startup"| DETECT
+```
+
+Training never runs on the server. The server only loads the finished model file.
+
+#### C. How code gets to the server (on every push)
+
+```mermaid
+flowchart LR
+    DEV["Developer<br/>pushes code"]
+    CI["GitHub Actions<br/>build → test → security scan"]
+    REG[("Image registry<br/><i>AWS ECR</i>")]
+    SERVER["Our server<br/><i>AWS EC2</i>"]
+    TF["Terraform<br/><i>infrastructure as code</i>"]
+
+    DEV --> CI
+    CI -->|"uploads container images"| REG
+    CI -->|"tells server to update"| SERVER
+    REG -->|"server pulls new images"| SERVER
+    TF -->|"creates server, storage,<br/>permissions (one-time)"| SERVER
+```
+
+A more detailed version of this pipeline is in `docs/diagrams/build-deploy-pipeline.excalidraw`.
 
 ### 4.2 Components
 
@@ -273,11 +329,11 @@ flowchart LR
 
 Goal: a walking skeleton — something runs end-to-end, however crudely.
 
-- [ ] **P0.1** Create GitHub repo with the structure in Section 10, MIT licence, `.gitignore`, `.editorconfig`.
-- [ ] **P0.2** Create OpenSky account and API client. Store credentials in a local `.env` (git-ignored).
-- [ ] **P0.3** Create Supabase project (Postgres 17). Save connection strings in `.env`.
-- [ ] **P0.4** Create the .NET 10 worker project; fetch one bounding box with a hard-coded token request and log the number of aircraft.
-- [ ] **P0.5** Local `docker-compose.yml` with a local Postgres container for development.
+- [x] **P0.1** Create GitHub repo with the structure in Section 10, MIT licence, `.gitignore`, `.editorconfig`.
+- [x] **P0.2** Create OpenSky account and API client. Store credentials in a local `.env` (git-ignored).
+- [x] **P0.3** Create Supabase project (Postgres 17). Save connection strings in `.env`.
+- [x] **P0.4** Create the .NET 10 worker project; fetch one bounding box with a hard-coded token request and log the number of aircraft.
+- [x] **P0.5** Local `docker-compose.yml` with a local Postgres container for development.
 - [ ] **P0.6** Write the first ADRs (copy the Decision Log entries into `/docs/adr/`).
 - [ ] **P0.7** README stub: pitch, planned architecture diagram, "status: in progress".
 
