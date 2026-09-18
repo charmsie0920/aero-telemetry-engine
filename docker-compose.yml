@@ -10,7 +10,10 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+      # NOTE: db/migrations is deliberately NOT mounted into
+      # /docker-entrypoint-initdb.d. DbUp owns the schema; letting Postgres
+      # auto-apply the same SQL would skip DbUp's `schemaversions` journal and
+      # make local and Supabase diverge silently.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${LOCAL_POSTGRES_USER:-aero} -d ${LOCAL_POSTGRES_DB:-aero}"]
       interval: 5s
