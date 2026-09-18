@@ -1,0 +1,18 @@
+<Project>
+
+  <!-- Shared settings for every .NET project in this repo. Add projects here,
+       not in each .csproj, so Worker / Core / Tests / Migrations can't drift. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+
+    <!-- A warning that reaches CI is a warning nobody fixes. Set this to false
+         locally if it gets in the way of a spike. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+</Project>
