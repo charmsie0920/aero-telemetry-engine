@@ -10,13 +10,28 @@
 ## 0. Current Status (update this block every time you work)
 
 ```
-PHASE:          0 — Foundation
-CURRENT TASK:   P0.6
-LAST UPDATED:   2026-09-16
+PHASE:          1 — Ingestion and Storage
+CURRENT TASK:   P1.1
+LAST UPDATED:   2026-09-18
 DONE SINCE LAST UPDATE:
-BLOCKERS:       none
+  - P0.6 ADRs written, P0.7 README stub done (both were complete but unticked).
+  - Setup audit before starting Phase 1. Fixed: bounding box was the whole
+    continental US (~1450 sq deg, ~11.5k credits/day) instead of 5x5 deg;
+    added .env.example; .env discovery no longer depends on the working
+    directory; removed the db/migrations initdb mount that would have bypassed
+    DbUp's journal; added .gitattributes, global.json, Directory.Build.props
+    and central package management; config moved to validated IOptions;
+    HttpClient moved to IHttpClientFactory.
+BLOCKERS:
+  - Supabase direct host db.<ref>.supabase.co is IPv6-only and unreachable from
+    this machine (verified: AAAA only, TCP :5432 fails). Need the SESSION-mode
+    pooler connection string from the Supabase dashboard before P1.1 can be run
+    against Supabase. Local Postgres is unaffected.
 OPEN QUESTIONS:
-MEASURED NUMBERS SO FAR: 
+  - Keep the Benelux/NW Europe box (48.0,2.0 -> 53.0,7.0) or pick another region?
+MEASURED NUMBERS SO FAR:
+  - 319 aircraft in one poll of the 25 sq deg box (2026-09-18).
+  - 1 OpenSky credit per call confirmed (X-Rate-Limit-Remaining 3997 after 3 calls).
 ```
 
 ### Instructions for AI assistants reading this document
@@ -334,8 +349,8 @@ Goal: a walking skeleton — something runs end-to-end, however crudely.
 - [x] **P0.3** Create Supabase project (Postgres 17). Save connection strings in `.env`.
 - [x] **P0.4** Create the .NET 10 worker project; fetch one bounding box with a hard-coded token request and log the number of aircraft.
 - [x] **P0.5** Local `docker-compose.yml` with a local Postgres container for development.
-- [ ] **P0.6** Write the first ADRs (copy the Decision Log entries into `/docs/adr/`).
-- [ ] **P0.7** README stub: pitch, planned architecture diagram, "status: in progress".
+- [x] **P0.6** Write the first ADRs (copy the Decision Log entries into `/docs/adr/`).
+- [x] **P0.7** README stub: pitch, planned architecture diagram, "status: in progress".
 
 **Exit criteria:** `docker compose up` runs the worker and it logs live aircraft counts.
 
