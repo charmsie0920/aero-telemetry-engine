@@ -11,22 +11,24 @@
 
 ```
 PHASE:          1 — Ingestion and Storage
-CURRENT TASK:   P1.1
-LAST UPDATED:   2026-09-18
+CURRENT TASK:   P1.2
+LAST UPDATED:   2026-09-24
 DONE SINCE LAST UPDATE:
-  - P0.6 ADRs written, P0.7 README stub done (both were complete but unticked).
-  - Setup audit before starting Phase 1. Fixed: bounding box was the whole
-    continental US (~1450 sq deg, ~11.5k credits/day) instead of 5x5 deg;
-    added .env.example; .env discovery no longer depends on the working
-    directory; removed the db/migrations initdb mount that would have bypassed
-    DbUp's journal; added .gitattributes, global.json, Directory.Build.props
-    and central package management; config moved to validated IOptions;
-    HttpClient moved to IHttpClientFactory.
+  - P1.1 done. Five DbUp migrations in db/migrations, applied by the new
+    src/Ingestion/Ingestion.Migrations one-shot console app. Everything is in
+    a `telemetry` schema, not `public` (D13 / ADR 0003). Verified on a clean
+    Postgres 17: 5 scripts applied, second run is a no-op, staging ->
+    INSERT ON CONFLICT dedupes within a batch and on replay.
+  - state_vectors has no partitions yet; inserts fail until P1.2.
+  - Local Postgres moved to host port 5433 (a native Windows Postgres owns
+    5432). Migrations applied to the compose database.
 BLOCKERS:
   - Supabase direct host db.<ref>.supabase.co is IPv6-only and unreachable from
     this machine (verified: AAAA only, TCP :5432 fails). Need the SESSION-mode
-    pooler connection string from the Supabase dashboard before P1.1 can be run
-    against Supabase. Local Postgres is unaffected.
+    pooler connection string from the Supabase dashboard before migrations
+    can be applied to Supabase. Local Postgres is unaffected.
+  - Official postgres:17 image has no pg_partman / pg_cron. P1.2 needs a
+    small local image that installs postgresql-17-partman and -cron.
 OPEN QUESTIONS:
   - Keep the Benelux/NW Europe box (48.0,2.0 -> 53.0,7.0) or pick another region?
 MEASURED NUMBERS SO FAR:
@@ -247,6 +249,8 @@ A more detailed version of this pipeline is in `docs/diagrams/build-deploy-pipel
 
 ### 7.1 Tables
 
+All tables live in the `telemetry` schema (D13). Migrations are in `db/migrations/` and are applied by `src/Ingestion/Ingestion.Migrations`.
+
 **`state_vectors`** — partitioned by `observed_at` (daily partitions)
 
 | Column | Type | Notes |
@@ -358,7 +362,7 @@ Goal: a walking skeleton — something runs end-to-end, however crudely.
 
 Goal: a production-quality ingestion worker writing to a partitioned database.
 
-- [ ] **P1.1** SQL migrations (DbUp): `state_vectors` partitioned table, staging table, `ingestion_runs`, `anomaly_scores`, `archive_log`.
+- [x] **P1.1** SQL migrations (DbUp): `state_vectors` partitioned table, staging table, `ingestion_runs`, `anomaly_scores`, `archive_log`.
 - [ ] **P1.2** Enable `pg_partman` + `pg_cron`; configure daily partitions and 48-hour retention (detach, not drop — the archiver drops).
 - [ ] **P1.3** Typed OpenSky client with OAuth token handler (Section 8.1 item 1).
 - [ ] **P1.4** Resilience pipeline: timeout, retry with jitter, circuit breaker, 429 handling.
@@ -484,6 +488,7 @@ aero-telemetry-engine/
 | D10 | No message broker | Kafka / RabbitMQ | Volume doesn't justify one; Postgres is sufficient |
 | D11 | GitHub OIDC → AWS, SSM for deploy and secrets | Long-lived access keys, SSH deploys | No static credentials; no open SSH port needed |
 | D12 | Grafana as the UI | Custom React frontend | Faster, and doubles as observability |
+| D13 | All tables in a `telemetry` schema (ADR 0003) | `public` schema + RLS | Supabase exposes `public` through its REST API with the anon key; a separate schema is not exposed by default |
 
 *Add new decisions here as the project evolves (D13, D14, …).*
 
