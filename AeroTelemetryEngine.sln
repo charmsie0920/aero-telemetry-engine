@@ -9,6 +9,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Ingestion", "Ingestion", "{
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ingestion.Worker", "src\Ingestion\Ingestion.Worker\Ingestion.Worker.csproj", "{0C3C4A33-162E-4934-B4E4-170BF66AEBC3}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ingestion.Migrations", "src\Ingestion\Ingestion.Migrations\Ingestion.Migrations.csproj", "{711A877C-000D-44DB-959C-ABAE5732F1AE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -31,6 +33,18 @@ Global
 		{0C3C4A33-162E-4934-B4E4-170BF66AEBC3}.Release|x64.Build.0 = Release|Any CPU
 		{0C3C4A33-162E-4934-B4E4-170BF66AEBC3}.Release|x86.ActiveCfg = Release|Any CPU
 		{0C3C4A33-162E-4934-B4E4-170BF66AEBC3}.Release|x86.Build.0 = Release|Any CPU
+		{711A877C-000D-44DB-959C-ABAE5732F1AE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{711A877C-000D-44DB-959C-ABAE5732F1AE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{711A877C-000D-44DB-959C-ABAE5732F1AE}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{711A877C-000D-44DB-959C-ABAE5732F1AE}.Debug|x64.Build.0 = Debug|Any CPU
+		{711A877C-000D-44DB-959C-ABAE5732F1AE}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{711A877C-000D-44DB-959C-ABAE5732F1AE}.Debug|x86.Build.0 = Debug|Any CPU
+		{711A877C-000D-44DB-959C-ABAE5732F1AE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{711A877C-000D-44DB-959C-ABAE5732F1AE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{711A877C-000D-44DB-959C-ABAE5732F1AE}.Release|x64.ActiveCfg = Release|Any CPU
+		{711A877C-000D-44DB-959C-ABAE5732F1AE}.Release|x64.Build.0 = Release|Any CPU
+		{711A877C-000D-44DB-959C-ABAE5732F1AE}.Release|x86.ActiveCfg = Release|Any CPU
+		{711A877C-000D-44DB-959C-ABAE5732F1AE}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -38,5 +52,6 @@ Global
 	GlobalSection(NestedProjects) = preSolution
 		{6999BB95-48D9-2F89-3C7F-00564788F543} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{0C3C4A33-162E-4934-B4E4-170BF66AEBC3} = {6999BB95-48D9-2F89-3C7F-00564788F543}
+		{711A877C-000D-44DB-959C-ABAE5732F1AE} = {6999BB95-48D9-2F89-3C7F-00564788F543}
 	EndGlobalSection
 EndGlobal

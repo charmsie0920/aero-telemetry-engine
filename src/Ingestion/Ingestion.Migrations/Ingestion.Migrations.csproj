@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="dbup-postgresql" />
+    <PackageReference Include="DotNetEnv" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- db/migrations is the single source of truth; the files are embedded
+         from there rather than copied into this project. -->
+    <EmbeddedResource Include="..\..\..\db\migrations\*.sql" LinkBase="Migrations" />
+
+    <!-- Same .env discovery as the worker. Linked rather than shared through a
+         library because it is the only code the two projects have in common. -->
+    <Compile Include="..\Ingestion.Worker\Configuration\DotEnvLoader.cs" Link="Configuration\DotEnvLoader.cs" />
+  </ItemGroup>
+
+</Project>
