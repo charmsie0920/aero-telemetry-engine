@@ -9,7 +9,7 @@ A fault-tolerant pipeline that ingests live aircraft positions from the OpenSky 
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/architecture-dark.png">
-  <img alt="Architecture: OpenSky feeds a .NET collector that writes to Postgres. An anomaly detector and an archiver read from Postgres, and Grafana shows the result." src="docs/diagrams/architecture.svg">
+  <img alt="Architecture: OpenSky feeds a .NET collector that writes to Postgres. An anomaly detector and an archiver read from Postgres, and Grafana shows the result." src="docs/diagrams/architecture-light.png">
 </picture>
 
 Solid boxes are being built now; dashed boxes are planned. The editable source is [docs/diagrams/architecture.excalidraw](docs/diagrams/architecture.excalidraw), and the model-training and deployment diagrams are in the [PRD](docs/PRD.md#41-diagrams).
