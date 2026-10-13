@@ -1,6 +1,16 @@
 services:
   postgres:
-    image: postgres:17
+    # postgres:17 plus pg_partman and pg_cron, built from db/postgres/Dockerfile.
+    build: ./db/postgres
+    image: aero-postgres:17
+    # pg_cron has to be loaded when the server starts, and it only runs jobs
+    # in the one database named here.
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_cron
+      - -c
+      - cron.database_name=${LOCAL_POSTGRES_DB:-aero}
     environment:
       # LOCAL_* so the Supabase POSTGRES_* values in .env don't leak into the dev container
       POSTGRES_DB: ${LOCAL_POSTGRES_DB:-aero}
