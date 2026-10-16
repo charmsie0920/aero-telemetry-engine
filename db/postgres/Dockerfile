@@ -3,7 +3,7 @@
 #
 # The official image has neither, and the local database should behave like
 # Supabase so that the same migrations run on both.
-FROM postgres:17
+FROM postgres:18
 
 # The official image already has the PostgreSQL apt repository configured, so
 # both extensions install as ordinary packages. Removing the package lists
