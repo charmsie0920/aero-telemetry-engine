@@ -62,6 +62,7 @@ The owner can override this at any time with something like "just do it" or "app
 | `docs/architecture.md`, `docs/diagrams/` | Diagrams, plain-English walkthrough, glossary. |
 | `docs/interview-notes.md` | Target roles, resume bullets, interview questions. |
 | `docs/adr/` | Decision records. |
+| `.github/workflows/ci.yml` | CI: build, test, image build + Trivy scan, compose validation. Needs no secrets. |
 | `grafana/` | Provisioned data source (`provisioning/`) and dashboard JSON (`dashboards/`). Edit the JSON; UI edits are not saved. |
 | `services/`, `training/`, `infra/` | Empty placeholders for Phases 2 and 3. |
 

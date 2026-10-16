@@ -1,5 +1,7 @@
 # Aero Telemetry Engine
 
+[![CI](https://github.com/charmsie0920/aero-telemetry-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/charmsie0920/aero-telemetry-engine/actions/workflows/ci.yml)
+
 A fault-tolerant pipeline that ingests live aircraft positions from the OpenSky Network every 30 seconds, stores them in PostgreSQL, and flags unusual flights. It is designed to keep collecting data when parts of the system fail.
 
 **Status: in progress.** The design is complete and the ingestion layer is being built now. [What works today](#what-works-today) lists exactly what exists; the rest of this page describes the design.
@@ -23,6 +25,7 @@ Solid boxes are being built now; dashed boxes are planned. The editable source i
 | Tests | **Built.** 47 automated tests: parsing rules; OpenSky failure handling (401, 429, 5xx, timeouts, circuit breaker) against a fake server; database writes against a real throwaway Postgres in Docker, including duplicate handling and flushing on shutdown. |
 | Time partitioning | **Built.** Daily partitions managed by `pg_partman`, with an hourly `pg_cron` job that creates new ones and detaches those older than 48 hours. |
 | Dashboard | **Built.** Grafana, provisioned from files in [grafana/](grafana): live aircraft map plus pipeline health (polls per minute, new vs duplicate rows, failed polls, OpenSky credits, database size against the 500 MB budget). |
+| CI | **Built.** [GitHub Actions](.github/workflows/ci.yml) on every push and pull request: Release build with warnings as errors, all 47 tests on a clean machine, both container images built and scanned with Trivy for known vulnerabilities. No secrets needed, because the tests use a mock API and a throwaway database. |
 | Containers | **Built.** Multi-stage Dockerfiles, non-root, with a `HEALTHCHECK`. `docker compose up` runs Postgres → migrations → collector → Grafana. `docker stop` shuts the collector down cleanly (tested). |
 | Anomaly detector, archiver | Planned |
 | AWS deployment (Terraform, GitHub Actions) | Planned |

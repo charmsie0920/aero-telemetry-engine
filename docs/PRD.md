@@ -18,6 +18,8 @@ Section numbers are referenced from code comments and CLAUDE.md. Don't renumber 
 ```
 PHASE:          1 — Ingestion and Storage
 CURRENT TASK:   MVP push, milestone M4 (rule-based + Isolation Forest scorer)
+                M5 done out of order: CI first, so M4's Python code is
+                covered by CI as it is written.
 LAST UPDATED:   2026-10-16
 DONE SINCE LAST UPDATE:
   - M1 done (P1.3-P1.8). The worker now polls every 30 s and writes to
@@ -46,6 +48,14 @@ DONE SINCE LAST UPDATE:
     exit code 0 in ~1 s. GSS encryption disabled in the compose connection
     string (Npgsql otherwise probes Kerberos in the slim image).
   - Not done yet: Grafana on EC2 (login, read-only DB user) belongs to P2.8.
+  - M5 done (P2.4). .github/workflows/ci.yml: three parallel jobs (dotnet
+    build+test, image build+Trivy per image, compose config check), NuGet
+    cached, concurrency cancels superseded runs, read-only token, no secrets.
+    Dependabot grouped monthly for NuGet, Actions and Docker.
+  - Verified locally: Release build 0 warnings, 47/47 tests with --no-build,
+    Trivy finds 0 fixable HIGH/CRITICAL in both images. The workflow itself
+    is unverified until the first push (it cannot run locally).
+  - Python jobs (uv, ruff, pytest) are a TODO in ci.yml, added in M4.
 BLOCKERS:
   - Supabase: need the SESSION-mode pooler connection string (the direct host
     is IPv6-only and unreachable from this machine). Migrations 0001-0006 are
@@ -237,7 +247,7 @@ Done (P0.1–P0.7): repo, OpenSky and Supabase accounts, worker scaffold, local 
 - [x] **P2.1** Multi-stage Dockerfile for the worker (non-root user, `HEALTHCHECK`).
 - [ ] **P2.2** Terraform: S3 state backend, VPC/security group, EC2 t3.small with instance role, ECR repos with lifecycle policies, S3 archive bucket, SSM parameters, AWS Budget alarm.
 - [ ] **P2.3** EC2 bootstrap (user data): install Docker + Compose, pull secrets from SSM, enable services on boot.
-- [ ] **P2.4** GitHub Actions `ci.yml`: build + test (.NET and Python), `ruff`, Docker build, Trivy scan. Runs on every PR.
+- [~] **P2.4** GitHub Actions `ci.yml`: build + test (.NET and Python), `ruff`, Docker build, Trivy scan. Runs on every PR. (.NET, images and Trivy done in M5; Python and `ruff` arrive with M4.)
 - [ ] **P2.5** GitHub OIDC trust with AWS (no access keys).
 - [ ] **P2.6** `deploy.yml`: on merge to `main`, push images to ECR tagged by git SHA, deploy via SSM Run Command, wait for readiness, roll back to the previous tag on failure.
 - [x] **P2.7** Grafana with provisioned datasource and dashboards: live aircraft map, polls/min, records inserted, credits remaining, error rate, database size. (Local; EC2 hardening in P2.8.)
