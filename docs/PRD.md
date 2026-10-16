@@ -17,14 +17,20 @@ Section numbers are referenced from code comments and CLAUDE.md. Don't renumber 
 
 ```
 PHASE:          1 — Ingestion and Storage
-CURRENT TASK:   P1.3
-LAST UPDATED:   2026-10-13
+CURRENT TASK:   MVP push, milestone M2 (tests, P1.9)
+LAST UPDATED:   2026-10-16
 DONE SINCE LAST UPDATE:
-  - P1.2 done. Local Postgres is a custom image (db/postgres/Dockerfile) with
-    pg_partman 5.5 and pg_cron 1.6. Migration 0006 sets up daily partitions on
-    telemetry.state_vectors (2 days premade + a default partition), 48-hour
-    retention that detaches rather than drops, and an hourly pg_cron job.
-    Applied to the local database; inserts now work.
+  - M1 done (P1.3-P1.8). The worker now polls every 30 s and writes to
+    Postgres: cached OAuth token with refresh-on-401, Polly retry + circuit
+    breaker + 10 s timeout, 429 waits for Retry-After, parsing/validation in
+    Ingestion.Core, bounded channel (100 batches, drop oldest), binary COPY
+    -> staging -> INSERT ON CONFLICT, one ingestion_runs row per cycle,
+    /health/live + /health/ready, Serilog (JSON outside Development).
+  - Verified locally: stopped Postgres for ~50 s mid-run; the batch was held
+    and retried, /health/ready returned 503, and every poll was written after
+    recovery (7 of 7 runs, no loss).
+  - Graceful shutdown (SIGTERM flush) not yet verified on Windows; check
+    with `docker stop` in M3.
 BLOCKERS:
   - Supabase: need the SESSION-mode pooler connection string (the direct host
     is IPv6-only and unreachable from this machine). Migrations 0001-0006 are
@@ -39,6 +45,8 @@ OPEN QUESTIONS:
 MEASURED NUMBERS SO FAR:
   - 319 aircraft in one poll of the 25 sq deg box (2026-09-18).
   - 1 OpenSky credit per call confirmed.
+  - ~220 aircraft per poll, ~190 new rows per poll after dedup (2026-10-16).
+  - Poll + write cycle: ~0.4-0.8 s (first poll ~2 s incl. token).
 ```
 
 ### Instructions for AI assistants
@@ -198,12 +206,12 @@ Done (P0.1–P0.7): repo, OpenSky and Supabase accounts, worker scaffold, local 
 
 - [x] **P1.1** SQL migrations (DbUp): `state_vectors` partitioned table, staging table, `ingestion_runs`, `anomaly_scores`, `archive_log`.
 - [x] **P1.2** Enable `pg_partman` + `pg_cron`; daily partitions and 48-hour retention (detach, not drop).
-- [ ] **P1.3** Typed OpenSky client with OAuth token handler (8.1 item 1).
-- [ ] **P1.4** Resilience pipeline: timeout, retry with jitter, circuit breaker, 429 handling.
-- [ ] **P1.5** Parsing and validation: map OpenSky's array format to a typed record; drop and count invalid rows (5.1).
-- [ ] **P1.6** Bounded channel between poller and writer; writer does binary COPY to staging + `INSERT ... ON CONFLICT DO NOTHING`.
-- [ ] **P1.7** Write one `ingestion_runs` row per cycle.
-- [ ] **P1.8** Health endpoints, graceful shutdown, Serilog JSON logging, options validation on startup.
+- [x] **P1.3** Typed OpenSky client with OAuth token handler (8.1 item 1).
+- [x] **P1.4** Resilience pipeline: timeout, retry with jitter, circuit breaker, 429 handling.
+- [x] **P1.5** Parsing and validation: map OpenSky's array format to a typed record; drop and count invalid rows (5.1).
+- [x] **P1.6** Bounded channel between poller and writer; writer does binary COPY to staging + `INSERT ... ON CONFLICT DO NOTHING`.
+- [x] **P1.7** Write one `ingestion_runs` row per cycle.
+- [x] **P1.8** Health endpoints, graceful shutdown, Serilog JSON logging, options validation on startup.
 - [ ] **P1.9** Tests: unit tests for parsing/validation; integration tests with Testcontainers; WireMock.Net tests for 429, 500, 401 and timeouts.
 - [ ] **P1.10** Run against Supabase for 24 hours locally; measure MB/day and record it in the Status block.
 
@@ -273,6 +281,8 @@ See the layout table in [CLAUDE.md](../CLAUDE.md).
 | D11 | GitHub OIDC → AWS, SSM for deploy and secrets | Access keys, SSH deploys | No static credentials, no open SSH port |
 | D12 | Grafana as the UI | React frontend | Faster, and doubles as observability |
 | D13 | All tables in a `telemetry` schema (ADR 0003) | `public` schema + RLS | Supabase exposes `public` through its REST API |
+| D14 | MVP first: local end-to-end slice (worker, tests, Grafana, rule + Isolation Forest scorer, CI, README) before AWS, the S3 archiver and the GRU | Following the roadmap in order | Job applications need a working demo now; the GRU needs weeks of data and the 14-day run needs 14 days anyway |
+| D15 | Worker uses the Web SDK (`WebApplication`) | Plain worker host + separate health mechanism | Simplest way to serve `/health/live` and `/health/ready`; no other endpoints are exposed |
 
 Add new decisions here as D14, D15, …
 

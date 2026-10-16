@@ -19,7 +19,7 @@ Solid boxes are being built now; dashed boxes are planned. The editable source i
 | Part | State |
 |---|---|
 | Database schema | **Built.** Six versioned SQL migrations in [db/migrations](db/migrations), applied by a one-shot DbUp migrator. Checked on a clean Postgres 17: a second run changes nothing, and replaying a batch adds no duplicate rows. |
-| Collector | **In progress.** Authenticates with OpenSky (OAuth2), fetches one poll for the configured region and logs the aircraft count. The polling loop, retries, buffer and database writer come next. |
+| Collector | **Built.** Polls OpenSky every 30 s with a cached OAuth2 token, retries with backoff, a circuit breaker and rate-limit handling. Validates records, buffers them in a bounded queue and bulk-loads them into Postgres with no duplicates. Survives a database outage without losing data (tested). Health endpoints on port 8080. |
 | Time partitioning | **Built.** Daily partitions managed by `pg_partman`, with an hourly `pg_cron` job that creates new ones and detaches those older than 48 hours. |
 | Anomaly detector, archiver, dashboard | Planned |
 | AWS deployment (Terraform, GitHub Actions) | Planned |
@@ -32,10 +32,10 @@ You need Docker, the .NET 10 SDK and a free [OpenSky](https://opensky-network.or
 cp .env.example .env    # then fill in OPENSKY_CLIENT_ID and OPENSKY_CLIENT_SECRET
 docker compose up -d    # builds and starts local Postgres on port 5433
 dotnet run --project src/Ingestion/Ingestion.Migrations    # creates the schema
-dotnet run --project src/Ingestion/Ingestion.Worker        # one poll; Ctrl+C to stop
+dotnet run --project src/Ingestion/Ingestion.Worker        # polls every 30 s; Ctrl+C to stop
 ```
 
-Today the last command ends with a log line such as `Fetched 319 aircraft in bounding box (25.0 sq deg)`. Once the dashboard is built, a single `docker compose up` will bring up the whole pipeline with a live map in Grafana.
+The collector logs one line per poll, such as `Poll 01a1...: 219 received, 219 valid, 195 new, 24 duplicates, 394 ms, 3995 credits left`. Once the dashboard is built, a single `docker compose up` will bring up the whole pipeline with a live map in Grafana.
 
 <!-- A screenshot or short GIF of the Grafana dashboard goes here once it exists. -->
 
