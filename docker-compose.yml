@@ -1,8 +1,25 @@
+# The whole pipeline on one machine: `docker compose up -d --build`.
+#
+#   postgres -> migrate (runs once, exits) -> ingestion -> Grafana on :3000
+#
+# Values come from .env (Compose reads it automatically for ${...}). Only the
+# variables each service needs are passed in, so the Supabase and AWS secrets
+# in .env never reach these containers.
+
+# The compose Postgres, as seen from inside the Docker network ("postgres" is
+# the service name). Both .NET apps run outside Development here, so they read
+# POSTGRES_CONNECTION_STRING; pointing it at this container keeps local runs
+# off Supabase.
+# GSS Encryption Mode=Disable: Npgsql otherwise tries Kerberos first and logs
+# "Cannot load library libgssapi_krb5" in the slim .NET runtime image.
+x-local-db: &local-db "Host=postgres;Port=5432;Database=${LOCAL_POSTGRES_DB:-aero};Username=${LOCAL_POSTGRES_USER:-aero};Password=${LOCAL_POSTGRES_PASSWORD:-aero};GSS Encryption Mode=Disable"
+
 services:
   postgres:
     # postgres:17 plus pg_partman and pg_cron, built from db/postgres/Dockerfile.
     build: ./db/postgres
     image: aero-postgres:17
+    restart: unless-stopped
     # pg_cron has to be loaded when the server starts, and it only runs jobs
     # in the one database named here.
     command:
@@ -32,35 +49,78 @@ services:
       timeout: 5s
       retries: 10
 
-  # One-shot: applies db/migrations, then exits 0. Dockerfile arrives with P2.1.
-  # migrate:
-  #   build: ./src/Ingestion/Ingestion.Migrations
-  #   env_file: .env
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
+  # One-shot: applies db/migrations, then exits 0.
+  migrate:
+    build:
+      context: .
+      dockerfile: src/Ingestion/Ingestion.Migrations/Dockerfile
+    image: aero-migrate:local
+    environment:
+      POSTGRES_CONNECTION_STRING: *local-db
+    depends_on:
+      postgres:
+        condition: service_healthy
 
-  # ingestion:
-  #   build: ./src/Ingestion/Ingestion.Worker
-  #   env_file: .env
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     migrate:
-  #       condition: service_completed_successfully
+  ingestion:
+    build:
+      context: .
+      dockerfile: src/Ingestion/Ingestion.Worker/Dockerfile
+    image: aero-ingestion:local
+    restart: unless-stopped
+    environment:
+      POSTGRES_CONNECTION_STRING: *local-db
+      # :? stops `docker compose up` with this message if the value is missing.
+      OPENSKY_CLIENT_ID: ${OPENSKY_CLIENT_ID:?Set OPENSKY_CLIENT_ID in .env}
+      OPENSKY_CLIENT_SECRET: ${OPENSKY_CLIENT_SECRET:?Set OPENSKY_CLIENT_SECRET in .env}
+      OPENSKY_BBOX_LAMIN: ${OPENSKY_BBOX_LAMIN:-48.0}
+      OPENSKY_BBOX_LOMIN: ${OPENSKY_BBOX_LOMIN:-2.0}
+      OPENSKY_BBOX_LAMAX: ${OPENSKY_BBOX_LAMAX:-53.0}
+      OPENSKY_BBOX_LOMAX: ${OPENSKY_BBOX_LOMAX:-7.0}
+      OPENSKY_POLL_INTERVAL_SECONDS: ${OPENSKY_POLL_INTERVAL_SECONDS:-30}
+    ports:
+      - "8080:8080"   # /health/live and /health/ready
+    # `docker stop` sends SIGTERM, then kills after this long. 30 s matches
+    # the worker's own shutdown timeout, so it can flush its buffer first.
+    stop_grace_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   # inference:
   #   build: ./services/inference
-  #   env_file: .env
   #   depends_on:
   #     - postgres
 
-  # grafana:
-  #   image: grafana/grafana:latest
-  #   ports:
-  #     - "3000:3000"
-  #   volumes:
-  #     - ./grafana/provisioning:/etc/grafana/provisioning
+  grafana:
+    image: grafana/grafana:13.2.3
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      # Local demo only: anyone on this machine can view (not edit) dashboards
+      # without logging in. The EC2 setup keeps login required.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/aero-pipeline.json
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      # Read by grafana/provisioning/datasources/postgres.yml.
+      AERO_DB_HOST: postgres:5432
+      AERO_DB_NAME: ${LOCAL_POSTGRES_DB:-aero}
+      AERO_DB_USER: ${LOCAL_POSTGRES_USER:-aero}
+      AERO_DB_PASSWORD: ${LOCAL_POSTGRES_PASSWORD:-aero}
+      AERO_DB_SSLMODE: disable
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   pgdata:
+  grafana-data:

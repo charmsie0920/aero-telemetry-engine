@@ -8,6 +8,12 @@ using Npgsql;
 using Serilog;
 using Serilog.Formatting.Compact;
 
+// Docker HEALTHCHECK mode: probe the running worker and exit (see HealthProbe).
+if (args is [HealthProbe.Argument])
+{
+    return await HealthProbe.RunAsync();
+}
+
 // A web host rather than a plain worker host, only so the worker can serve
 // /health/live and /health/ready. It still has no other HTTP endpoints.
 var builder = WebApplication.CreateBuilder(args);
@@ -108,4 +114,5 @@ if (builder.Environment.IsDevelopment())
     }
 }
 
-app.Run();
+await app.RunAsync();
+return 0;

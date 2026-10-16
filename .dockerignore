@@ -1,0 +1,21 @@
+# Keeps the Docker build context small and secret-free. Every Dockerfile in
+# this repo builds from the repo root, so this one file covers them all.
+
+# Secrets: never copied into an image layer.
+.env
+.env.*
+
+# Build output; each image restores and builds from source itself.
+**/bin/
+**/obj/
+
+# Not needed to build any image.
+.git/
+.github/
+.vs/
+.claude/
+docs/
+training/
+infra/
+grafana/
+**/*.md
