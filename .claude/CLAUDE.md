@@ -51,9 +51,10 @@ The owner can override this at any time with something like "just do it" or "app
 
 | Path | What it is |
 |---|---|
-| `src/Ingestion/Ingestion.Worker/` | The collector: a .NET worker service that polls OpenSky. Currently fetches once and logs the aircraft count. |
+| `src/Ingestion/Ingestion.Worker/` | The collector: polls OpenSky every 30 s (`OpenSky/`), buffers batches and writes them to Postgres (`Pipeline/`), serves `/health/live` and `/health/ready` on port 8080. |
 | `src/Ingestion/Ingestion.Migrations/` | One-shot console app that applies the SQL migrations with DbUp. |
-| `src/Ingestion/Ingestion.Core/`, `Ingestion.Tests/` | Empty placeholders (parsing/validation and tests come in P1.5 and P1.9). |
+| `src/Ingestion/Ingestion.Core/` | Parsing and validation of OpenSky responses. Pure logic, no I/O. |
+| `src/Ingestion/Ingestion.Tests/` | Empty placeholder (tests come in P1.9). |
 | `db/migrations/` | Numbered SQL files (`0001_...sql`). The single source of truth for the schema. |
 | `db/postgres/Dockerfile` | The local Postgres image: Postgres 17 plus `pg_partman` and `pg_cron`. |
 | `docker-compose.yml` | Runs the local Postgres. Other services are commented out until they exist. |
@@ -72,6 +73,7 @@ docker compose up -d                                      # start local Postgres
 dotnet build                                              # build everything
 dotnet run --project src/Ingestion/Ingestion.Migrations   # apply db/migrations
 dotnet run --project src/Ingestion/Ingestion.Worker       # run the collector; Ctrl+C to stop
+curl.exe http://localhost:8080/health/ready               # is the running worker healthy?
 docker compose exec postgres psql -U aero -d aero         # open a SQL prompt in the local database
 ```
 
