@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Pure logic with no I/O: parsing and validation of OpenSky responses.
+       Kept apart from the worker so it can be unit-tested without HTTP or a
+       database (P1.9). -->
+
+</Project>
