@@ -4,7 +4,7 @@ A fault-tolerant pipeline that ingests live aircraft positions from the OpenSky 
 
 **Status: in progress.** The design is complete and the ingestion layer is being built now. [What works today](#what-works-today) lists exactly what exists; the rest of this page describes the design.
 
-**Stack so far:** C# / .NET 10 · PostgreSQL 17 (`pg_partman`, `pg_cron`) · Docker · DbUp<br>
+**Stack so far:** C# / .NET 10 · PostgreSQL 17 (`pg_partman`, `pg_cron`) · Docker · DbUp · Polly · xUnit, Testcontainers, WireMock.Net<br>
 **Planned:** Python (ONNX Runtime) · Grafana · Terraform · AWS (EC2, S3) · GitHub Actions
 
 <picture>
@@ -20,6 +20,7 @@ Solid boxes are being built now; dashed boxes are planned. The editable source i
 |---|---|
 | Database schema | **Built.** Six versioned SQL migrations in [db/migrations](db/migrations), applied by a one-shot DbUp migrator. Checked on a clean Postgres 17: a second run changes nothing, and replaying a batch adds no duplicate rows. |
 | Collector | **Built.** Polls OpenSky every 30 s with a cached OAuth2 token, retries with backoff, a circuit breaker and rate-limit handling. Validates records, buffers them in a bounded queue and bulk-loads them into Postgres with no duplicates. Survives a database outage without losing data (tested). Health endpoints on port 8080. |
+| Tests | **Built.** 47 automated tests: parsing rules; OpenSky failure handling (401, 429, 5xx, timeouts, circuit breaker) against a fake server; database writes against a real throwaway Postgres in Docker, including duplicate handling and flushing on shutdown. |
 | Time partitioning | **Built.** Daily partitions managed by `pg_partman`, with an hourly `pg_cron` job that creates new ones and detaches those older than 48 hours. |
 | Anomaly detector, archiver, dashboard | Planned |
 | AWS deployment (Terraform, GitHub Actions) | Planned |
@@ -33,6 +34,7 @@ cp .env.example .env    # then fill in OPENSKY_CLIENT_ID and OPENSKY_CLIENT_SECR
 docker compose up -d    # builds and starts local Postgres on port 5433
 dotnet run --project src/Ingestion/Ingestion.Migrations    # creates the schema
 dotnet run --project src/Ingestion/Ingestion.Worker        # polls every 30 s; Ctrl+C to stop
+dotnet test                                                # 47 tests; needs Docker for the database ones
 ```
 
 The collector logs one line per poll, such as `Poll 01a1...: 219 received, 219 valid, 195 new, 24 duplicates, 394 ms, 3995 credits left`. Once the dashboard is built, a single `docker compose up` will bring up the whole pipeline with a live map in Grafana.

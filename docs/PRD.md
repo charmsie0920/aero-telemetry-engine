@@ -17,7 +17,7 @@ Section numbers are referenced from code comments and CLAUDE.md. Don't renumber 
 
 ```
 PHASE:          1 — Ingestion and Storage
-CURRENT TASK:   MVP push, milestone M2 (tests, P1.9)
+CURRENT TASK:   MVP push, milestone M3 (Docker images + Grafana, P2.1/P2.7)
 LAST UPDATED:   2026-10-16
 DONE SINCE LAST UPDATE:
   - M1 done (P1.3-P1.8). The worker now polls every 30 s and writes to
@@ -29,8 +29,14 @@ DONE SINCE LAST UPDATE:
   - Verified locally: stopped Postgres for ~50 s mid-run; the batch was held
     and retried, /health/ready returned 503, and every poll was written after
     recovery (7 of 7 runs, no loss).
-  - Graceful shutdown (SIGTERM flush) not yet verified on Windows; check
-    with `docker stop` in M3.
+  - M2 done (P1.9). 47 tests in Ingestion.Tests, ~20 s: parser unit tests;
+    WireMock tests for 401 refresh, 429, 5xx retry, timeouts, circuit
+    breaker; Testcontainers tests (real pg_partman/pg_cron image + real
+    migrations) for idempotent writes, duplicates, partition routing, and the
+    writer flushing pending batches on shutdown.
+  - Refactors for testability: MigrationRunner, AddOpenSky(), BatchWriter
+    (SQL) split from WriterService (loop); OpenSky base URLs in options.
+  - Still to check in M3: SIGTERM flush end to end with `docker stop`.
 BLOCKERS:
   - Supabase: need the SESSION-mode pooler connection string (the direct host
     is IPv6-only and unreachable from this machine). Migrations 0001-0006 are
@@ -212,7 +218,7 @@ Done (P0.1–P0.7): repo, OpenSky and Supabase accounts, worker scaffold, local 
 - [x] **P1.6** Bounded channel between poller and writer; writer does binary COPY to staging + `INSERT ... ON CONFLICT DO NOTHING`.
 - [x] **P1.7** Write one `ingestion_runs` row per cycle.
 - [x] **P1.8** Health endpoints, graceful shutdown, Serilog JSON logging, options validation on startup.
-- [ ] **P1.9** Tests: unit tests for parsing/validation; integration tests with Testcontainers; WireMock.Net tests for 429, 500, 401 and timeouts.
+- [x] **P1.9** Tests: unit tests for parsing/validation; integration tests with Testcontainers; WireMock.Net tests for 429, 500, 401 and timeouts.
 - [ ] **P1.10** Run against Supabase for 24 hours locally; measure MB/day and record it in the Status block.
 
 **Exit:** 24-hour run against Supabase with no manual intervention; all failure tests pass; database size within budget.

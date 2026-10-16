@@ -54,7 +54,7 @@ The owner can override this at any time with something like "just do it" or "app
 | `src/Ingestion/Ingestion.Worker/` | The collector: polls OpenSky every 30 s (`OpenSky/`), buffers batches and writes them to Postgres (`Pipeline/`), serves `/health/live` and `/health/ready` on port 8080. |
 | `src/Ingestion/Ingestion.Migrations/` | One-shot console app that applies the SQL migrations with DbUp. |
 | `src/Ingestion/Ingestion.Core/` | Parsing and validation of OpenSky responses. Pure logic, no I/O. |
-| `src/Ingestion/Ingestion.Tests/` | Empty placeholder (tests come in P1.9). |
+| `src/Ingestion/Ingestion.Tests/` | xUnit v3 tests: parser unit tests, WireMock tests for the OpenSky client, Testcontainers tests against a real Postgres. |
 | `db/migrations/` | Numbered SQL files (`0001_...sql`). The single source of truth for the schema. |
 | `db/postgres/Dockerfile` | The local Postgres image: Postgres 17 plus `pg_partman` and `pg_cron`. |
 | `docker-compose.yml` | Runs the local Postgres. Other services are commented out until they exist. |
@@ -77,7 +77,12 @@ curl.exe http://localhost:8080/health/ready               # is the running worke
 docker compose exec postgres psql -U aero -d aero         # open a SQL prompt in the local database
 ```
 
-There are no tests yet.
+```powershell
+dotnet test                                               # all tests; Docker must be running (Testcontainers)
+dotnet test --filter "FullyQualifiedName~Parsing"         # one area only
+```
+
+The database tests build `db/postgres/Dockerfile` into a throwaway container and run the real migrations, so the first run takes a minute longer.
 
 ## Conventions and things that are easy to get wrong
 
