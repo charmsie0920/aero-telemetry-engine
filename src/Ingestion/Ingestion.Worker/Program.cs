@@ -1,7 +1,16 @@
-using Ingestion.Worker;
 using Ingestion.Worker.Configuration;
+using Ingestion.Worker.Health;
+using Ingestion.Worker.OpenSky;
+using Ingestion.Worker.Pipeline;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Options;
+using Npgsql;
+using Serilog;
+using Serilog.Formatting.Compact;
 
-var builder = Host.CreateApplicationBuilder(args);
+// A web host rather than a plain worker host, only so the worker can serve
+// /health/live and /health/ready. It still has no other HTTP endpoints.
+var builder = WebApplication.CreateBuilder(args);
 
 // Local development only. In Docker and on EC2 the environment is populated
 // from env_file / SSM, and there is no .env to find.
@@ -12,6 +21,23 @@ if (builder.Environment.IsDevelopment())
 }
 
 builder.Configuration.AddAeroEnvironmentVariables(builder.Environment.IsDevelopment());
+
+// Serilog: readable text locally, one JSON object per line everywhere else so
+// log tools can filter on fields like RunId (PRD 8.1, P1.8).
+builder.Services.AddSerilog(logging =>
+{
+    logging.ReadFrom.Configuration(builder.Configuration).Enrich.FromLogContext();
+    if (builder.Environment.IsDevelopment())
+    {
+        logging.WriteTo.Console();
+    }
+    else
+    {
+        logging.WriteTo.Console(new RenderedCompactJsonFormatter());
+    }
+});
+
+// --- Configuration, checked at startup so a missing value fails fast --------
 
 builder.Services
     .AddOptions<OpenSkyOptions>()
@@ -25,11 +51,13 @@ builder.Services
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
-builder.Services.AddHttpClient(OpenSkyClientNames.Api, client =>
-{
-    client.BaseAddress = new Uri("https://opensky-network.org/api/");
-    client.Timeout = TimeSpan.FromSeconds(10);
-});
+builder.Services.AddSingleton(TimeProvider.System);
+
+// --- OpenSky -----------------------------------------------------------------
+
+builder.Services.AddSingleton<OpenSkyTokenProvider>();
+builder.Services.AddSingleton<OpenSkyClient>();
+builder.Services.AddTransient<OpenSkyAuthHandler>();
 
 builder.Services.AddHttpClient(OpenSkyClientNames.Auth, client =>
 {
@@ -37,16 +65,57 @@ builder.Services.AddHttpClient(OpenSkyClientNames.Auth, client =>
     client.Timeout = TimeSpan.FromSeconds(10);
 });
 
-builder.Services.AddHostedService<Worker>();
+var openSkyApi = builder.Services.AddHttpClient(OpenSkyClientNames.Api, client =>
+{
+    client.BaseAddress = new Uri("https://opensky-network.org/api/");
+    // The resilience pipeline owns timeouts (10 s per attempt). This outer
+    // limit only has to be longer than all attempts plus their backoff.
+    client.Timeout = TimeSpan.FromMinutes(2);
+});
 
-var host = builder.Build();
+// Handlers run in the order added, outermost first: resilience wraps auth,
+// so every retry passes through the auth handler and gets a valid token.
+openSkyApi.AddResilienceHandler(OpenSkyResilience.PipelineName, OpenSkyResilience.Configure);
+openSkyApi.AddHttpMessageHandler<OpenSkyAuthHandler>();
 
-var startupLogger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+// --- Database ----------------------------------------------------------------
+
+// One shared connection pool for the writer and the health check.
+builder.Services.AddSingleton(sp =>
+    NpgsqlDataSource.Create(sp.GetRequiredService<IOptions<DatabaseOptions>>().Value.ConnectionString));
+
+// --- Pipeline: poller -> bounded buffer -> writer ----------------------------
+
+builder.Services.AddSingleton<PipelineState>();
+builder.Services.AddSingleton(sp => BatchBuffer.Create(
+    sp.GetRequiredService<PipelineState>(),
+    sp.GetRequiredService<ILoggerFactory>().CreateLogger(nameof(BatchBuffer))));
+
+// Hosted services stop in REVERSE order of registration. The poller is
+// registered last so it stops first and closes the buffer; the writer then
+// flushes what is left before it stops (PRD 8.1 item 6).
+builder.Services.AddHostedService<DatabaseWriter>();
+builder.Services.AddHostedService<PollingService>();
+
+builder.Services.Configure<HostOptions>(host => host.ShutdownTimeout = TimeSpan.FromSeconds(30));
+
+// --- Health ------------------------------------------------------------------
+
+builder.Services.AddHealthChecks()
+    .AddCheck<ReadinessHealthCheck>("pipeline", tags: ["ready"]);
+
+var app = builder.Build();
+
+// Live: the process answers HTTP. Runs no checks, so it never fails because
+// of the database or OpenSky; restarting would not fix those.
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
+app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
+
 if (builder.Environment.IsDevelopment())
 {
     if (dotEnvPath is null)
     {
-        startupLogger.LogWarning(
+        app.Logger.LogWarning(
             "No .env file found above {BaseDirectory} or {WorkingDirectory}; relying on the "
             + "ambient environment. Copy .env.example to .env at the repo root.",
             AppContext.BaseDirectory,
@@ -54,8 +123,8 @@ if (builder.Environment.IsDevelopment())
     }
     else
     {
-        startupLogger.LogInformation("Loaded environment from {DotEnvPath}", dotEnvPath);
+        app.Logger.LogInformation("Loaded environment from {DotEnvPath}", dotEnvPath);
     }
 }
 
-host.Run();
+app.Run();
