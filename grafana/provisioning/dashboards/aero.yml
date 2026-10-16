@@ -1,0 +1,11 @@
+# Loads every dashboard JSON in /etc/grafana/dashboards (mounted from
+# grafana/dashboards/). The files in git are the source of truth: edits made
+# in the Grafana UI are not saved back, so export changes to the JSON file.
+apiVersion: 1
+
+providers:
+  - name: aero
+    type: file
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/dashboards

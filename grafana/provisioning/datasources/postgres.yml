@@ -1,0 +1,22 @@
+# Provisioned data source: Grafana creates it on startup from this file, so
+# the dashboard works on a fresh install with no clicking. The $AERO_DB_*
+# values come from the container environment (docker-compose.yml), so the
+# same file serves the local Postgres and, later, Supabase.
+apiVersion: 1
+
+datasources:
+  - name: Aero Postgres
+    # Fixed uid: the dashboard JSON refers to the data source by this id.
+    uid: aero-postgres
+    type: grafana-postgresql-datasource
+    url: $AERO_DB_HOST
+    user: $AERO_DB_USER
+    isDefault: true
+    editable: false
+    jsonData:
+      database: $AERO_DB_NAME
+      sslmode: $AERO_DB_SSLMODE
+      postgresVersion: 1700
+      timescaledb: false
+    secureJsonData:
+      password: $AERO_DB_PASSWORD
