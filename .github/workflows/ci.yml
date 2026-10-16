@@ -1,0 +1,122 @@
+# Continuous integration (P2.4): every push to main and every pull request
+# builds the code, runs the tests on a clean machine, builds both container
+# images and scans them for known vulnerabilities.
+#
+# No secrets are needed. The OpenSky tests run against a mock server
+# (WireMock.Net) and the database tests against a throwaway container
+# (Testcontainers), so this workflow is safe to run on pull requests.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Lets you run it by hand from the Actions tab.
+  workflow_dispatch:
+
+# A new push to the same branch cancels the previous run instead of queueing
+# behind it, which keeps the free Actions minutes for the newest commit.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Read-only token: this workflow never writes to the repository.
+permissions:
+  contents: read
+
+jobs:
+  dotnet:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Install .NET
+        uses: actions/setup-dotnet@v6.0.0
+        with:
+          # Read from global.json so CI and local development can never use
+          # different SDK versions.
+          global-json-file: global.json
+
+      # Restoring packages is the slowest part of a cold build, so the
+      # downloaded packages are cached. The key includes the version file, so
+      # changing a package version produces a new cache instead of a stale one.
+      - name: Cache NuGet packages
+        uses: actions/cache@v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore
+
+      # Release, like the containers ship. Directory.Build.props turns
+      # warnings into errors, so this step also enforces code style.
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      # Docker is preinstalled on GitHub's Ubuntu runners, so Testcontainers
+      # can start the real Postgres 17 + pg_partman + pg_cron image and apply
+      # the real migrations.
+      - name: Test
+        run: dotnet test --configuration Release --no-build --logger "console;verbosity=normal"
+
+      # TODO (M4): add the Python jobs here once services/inference exists:
+      #   uv sync, ruff check, pytest.
+
+  images:
+    name: Image (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      # Don't cancel the worker image because the migrator image failed; both
+      # results are useful.
+      fail-fast: false
+      matrix:
+        include:
+          - name: ingestion
+            dockerfile: src/Ingestion/Ingestion.Worker/Dockerfile
+          - name: migrate
+            dockerfile: src/Ingestion/Ingestion.Migrations/Dockerfile
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      # Both Dockerfiles build from the repository root, so the context is "."
+      # and -f selects which one to build.
+      - name: Build image
+        run: docker build -f ${{ matrix.dockerfile }} -t aero-${{ matrix.name }}:ci .
+
+      # Trivy reports known CVEs in the base image and the installed packages.
+      # ignore-unfixed skips vulnerabilities with no patch available, because
+      # failing the build on something unfixable only teaches people to ignore
+      # a red pipeline.
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: aero-${{ matrix.name }}:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+        env:
+          # Trivy's database is served from a registry that rate-limits
+          # anonymous pulls; these mirrors are the documented fallbacks.
+          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
+          TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db:1
+
+  compose:
+    name: Compose config
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      # Catches a broken docker-compose.yml without starting anything. The
+      # dummy values stand in for .env, which is not in the repository.
+      - name: Validate docker-compose.yml
+        run: docker compose config --quiet
+        env:
+          OPENSKY_CLIENT_ID: ci
+          OPENSKY_CLIENT_SECRET: ci

@@ -1,0 +1,40 @@
+# Dependabot opens pull requests when a dependency has a new version, and CI
+# runs on each one, so an upgrade that breaks the build is visible before it
+# is merged.
+#
+# Monthly and grouped: one pull request per ecosystem per month rather than a
+# steady trickle of individual ones.
+version: 2
+
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      nuget:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore"
+
+  - package-ecosystem: docker
+    # One entry per Dockerfile: Dependabot does not search directories.
+    directories:
+      - /db/postgres
+      - /src/Ingestion/Ingestion.Worker
+      - /src/Ingestion/Ingestion.Migrations
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "chore"
