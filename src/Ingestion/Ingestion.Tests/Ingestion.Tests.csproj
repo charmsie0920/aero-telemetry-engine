@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- xUnit v3 test projects compile to an executable; `dotnet test` runs it. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Ingestion.Core\Ingestion.Core.csproj" />
+    <ProjectReference Include="..\Ingestion.Worker\Ingestion.Worker.csproj" />
+    <!-- For MigrationRunner: the database tests build their schema with the
+         same embedded db/migrations scripts as production. -->
+    <ProjectReference Include="..\Ingestion.Migrations\Ingestion.Migrations.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="WireMock.Net" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+</Project>
