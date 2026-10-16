@@ -55,28 +55,8 @@ builder.Services.AddSingleton(TimeProvider.System);
 
 // --- OpenSky -----------------------------------------------------------------
 
-builder.Services.AddSingleton<OpenSkyTokenProvider>();
-builder.Services.AddSingleton<OpenSkyClient>();
-builder.Services.AddTransient<OpenSkyAuthHandler>();
-
-builder.Services.AddHttpClient(OpenSkyClientNames.Auth, client =>
-{
-    client.BaseAddress = new Uri("https://auth.opensky-network.org/");
-    client.Timeout = TimeSpan.FromSeconds(10);
-});
-
-var openSkyApi = builder.Services.AddHttpClient(OpenSkyClientNames.Api, client =>
-{
-    client.BaseAddress = new Uri("https://opensky-network.org/api/");
-    // The resilience pipeline owns timeouts (10 s per attempt). This outer
-    // limit only has to be longer than all attempts plus their backoff.
-    client.Timeout = TimeSpan.FromMinutes(2);
-});
-
-// Handlers run in the order added, outermost first: resilience wraps auth,
-// so every retry passes through the auth handler and gets a valid token.
-openSkyApi.AddResilienceHandler(OpenSkyResilience.PipelineName, OpenSkyResilience.Configure);
-openSkyApi.AddHttpMessageHandler<OpenSkyAuthHandler>();
+// Token cache, auth handler, resilience pipeline and the client itself.
+builder.Services.AddOpenSky();
 
 // --- Database ----------------------------------------------------------------
 
@@ -94,7 +74,8 @@ builder.Services.AddSingleton(sp => BatchBuffer.Create(
 // Hosted services stop in REVERSE order of registration. The poller is
 // registered last so it stops first and closes the buffer; the writer then
 // flushes what is left before it stops (PRD 8.1 item 6).
-builder.Services.AddHostedService<DatabaseWriter>();
+builder.Services.AddSingleton<BatchWriter>();
+builder.Services.AddHostedService<WriterService>();
 builder.Services.AddHostedService<PollingService>();
 
 builder.Services.Configure<HostOptions>(host => host.ShutdownTimeout = TimeSpan.FromSeconds(30));

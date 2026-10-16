@@ -1,4 +1,3 @@
-using System.Threading.Channels;
 using Ingestion.Core;
 using Npgsql;
 using NpgsqlTypes;
@@ -6,8 +5,7 @@ using NpgsqlTypes;
 namespace Ingestion.Worker.Pipeline;
 
 /// <summary>
-/// Takes batches off the buffer and writes them to Postgres (PRD 7.1 insert
-/// path). Each batch is one transaction:
+/// Writes one poll batch to Postgres (PRD 7.1 insert path), as one transaction:
 ///   TRUNCATE staging -> binary COPY into staging ->
 ///   INSERT INTO state_vectors ... ON CONFLICT DO NOTHING ->
 ///   INSERT one ingestion_runs row -> COMMIT
@@ -18,14 +16,13 @@ namespace Ingestion.Worker.Pipeline;
 /// INSERT ... ON CONFLICT moves them across. Because everything commits
 /// together, a batch is either fully written (data + run row) or not at all,
 /// and writing the same batch twice changes nothing.
+///
+/// Only the SQL lives here; retrying and draining the buffer are
+/// <see cref="WriterService"/>'s job. That split lets the integration tests
+/// call this class directly.
 /// </remarks>
-public sealed class DatabaseWriter(
-    NpgsqlDataSource dataSource,
-    Channel<PollBatch> buffer,
-    ILogger<DatabaseWriter> logger) : BackgroundService
+public sealed class BatchWriter(NpgsqlDataSource dataSource)
 {
-    private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(30);
-
     private const string CopySql = """
         COPY telemetry.state_vectors_staging (
           icao24, observed_at, last_contact, callsign, origin_country,
@@ -57,82 +54,8 @@ public sealed class DatabaseWriter(
         ON CONFLICT (run_id) DO NOTHING
         """;
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        // Reads WITHOUT the stopping token: on shutdown the poller completes
-        // the channel, and this loop keeps going until the buffer is empty.
-        await foreach (var batch in buffer.Reader.ReadAllAsync(CancellationToken.None))
-        {
-            if (!await WriteWithRetryAsync(batch, stoppingToken))
-            {
-                break;
-            }
-        }
-
-        var unflushed = buffer.Reader.Count;
-        if (unflushed > 0)
-        {
-            logger.LogError("Shut down with {Unflushed} batches still in the buffer", unflushed);
-        }
-
-        logger.LogInformation("Database writer stopped");
-    }
-
-    /// <summary>
-    /// Retries the same batch until it is written. Returns false only if the
-    /// host is shutting down while the database is still unreachable.
-    /// </summary>
-    private async Task<bool> WriteWithRetryAsync(PollBatch batch, CancellationToken stoppingToken)
-    {
-        var delay = TimeSpan.FromSeconds(1);
-
-        while (true)
-        {
-            try
-            {
-                var inserted = await WriteAsync(batch);
-                LogCycle(batch, inserted);
-                return true;
-            }
-            catch (NpgsqlException ex) when (ex.IsTransient)
-            {
-                // Database down or restarting. The batch stays in hand and the
-                // poller keeps filling the buffer behind it.
-                if (stoppingToken.IsCancellationRequested)
-                {
-                    logger.LogError(ex, "Database still unreachable at shutdown; batch {RunId} not written", batch.RunId);
-                    return false;
-                }
-
-                logger.LogWarning(
-                    "Database unreachable ({Message}); retrying batch {RunId} in {DelaySeconds} s. {Buffered} batches buffered",
-                    ex.Message,
-                    batch.RunId,
-                    delay.TotalSeconds,
-                    buffer.Reader.Count);
-
-                try
-                {
-                    await Task.Delay(delay, stoppingToken);
-                }
-                catch (OperationCanceledException)
-                {
-                    // Shutdown requested while waiting: try once more, then give up.
-                }
-
-                delay = TimeSpan.FromTicks(Math.Min(delay.Ticks * 2, MaxRetryDelay.Ticks));
-            }
-            catch (NpgsqlException ex)
-            {
-                // A permanent error (bad SQL, missing table, bad data). Retrying
-                // would block every batch behind this one, so skip it loudly.
-                logger.LogError(ex, "Batch {RunId} rejected by the database and skipped", batch.RunId);
-                return true;
-            }
-        }
-    }
-
-    private async Task<int> WriteAsync(PollBatch batch)
+    /// <summary>Writes the batch and returns how many rows were new.</summary>
+    public async Task<int> WriteAsync(PollBatch batch)
     {
         // No cancellation token: once started, a write should finish so the
         // transaction never ends half-done on shutdown.
@@ -210,23 +133,4 @@ public sealed class DatabaseWriter(
 
     // ADO.NET parameters use DBNull, not null, for SQL NULL.
     private static object DbValue(object? value) => value ?? DBNull.Value;
-
-    private void LogCycle(PollBatch batch, int inserted)
-    {
-        if (batch.Error is not null)
-        {
-            logger.LogWarning("Poll {RunId} failed: {Error}", batch.RunId, batch.Error);
-            return;
-        }
-
-        logger.LogInformation(
-            "Poll {RunId}: {Received} received, {Valid} valid, {Inserted} new, {Duplicates} duplicates, {DurationMs} ms, {Credits} credits left",
-            batch.RunId,
-            batch.RecordsReceived,
-            batch.Records.Count,
-            inserted,
-            batch.Records.Count - inserted,
-            batch.DurationMs,
-            batch.CreditsRemaining);
-    }
 }

@@ -4,7 +4,7 @@ namespace Ingestion.Worker.Pipeline;
 
 /// <summary>
 /// One poll cycle's output, passed from <see cref="PollingService"/> to
-/// <see cref="DatabaseWriter"/> through the buffer. Failed polls are batches
+/// <see cref="WriterService"/> through the buffer. Failed polls are batches
 /// too (with no records and <see cref="Error"/> set), so every cycle gets a
 /// row in telemetry.ingestion_runs.
 /// </summary>

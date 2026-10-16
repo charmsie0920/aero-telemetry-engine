@@ -6,6 +6,22 @@ using Polly.Timeout;
 namespace Ingestion.Worker.OpenSky;
 
 /// <summary>
+/// Timings for the resilience pipeline. Production uses <see cref="Default"/>;
+/// tests register shorter ones so a "4 attempts that all time out" test takes
+/// milliseconds instead of a minute.
+/// </summary>
+public sealed record OpenSkyResilienceSettings(
+    TimeSpan AttemptTimeout,
+    TimeSpan RetryBaseDelay,
+    TimeSpan BreakDuration)
+{
+    public static OpenSkyResilienceSettings Default { get; } = new(
+        AttemptTimeout: TimeSpan.FromSeconds(10),
+        RetryBaseDelay: TimeSpan.FromSeconds(2),
+        BreakDuration: TimeSpan.FromSeconds(60));
+}
+
+/// <summary>
 /// The resilience pipeline wrapped around every OpenSky API call (PRD 8.1 item 2).
 /// </summary>
 /// <remarks>
@@ -21,6 +37,7 @@ namespace Ingestion.Worker.OpenSky;
 public static class OpenSkyResilience
 {
     public const string PipelineName = "opensky";
+    public const int MaxRetryAttempts = 3;
 
     /// <summary>
     /// Request option the retry callback increments, so the poller can store
@@ -28,13 +45,15 @@ public static class OpenSkyResilience
     /// </summary>
     public static readonly HttpRequestOptionsKey<RetryCounter> RetryCounterKey = new("Aero.RetryCounter");
 
-    public static void Configure(ResiliencePipelineBuilder<HttpResponseMessage> pipeline)
+    public static void Configure(
+        ResiliencePipelineBuilder<HttpResponseMessage> pipeline,
+        OpenSkyResilienceSettings settings)
     {
         pipeline.AddRetry(new HttpRetryStrategyOptions
         {
-            MaxRetryAttempts = 3,
+            MaxRetryAttempts = MaxRetryAttempts,
             BackoffType = DelayBackoffType.Exponential,
-            Delay = TimeSpan.FromSeconds(2),
+            Delay = settings.RetryBaseDelay,
             // Jitter spreads retries out so many clients don't retry in lockstep.
             UseJitter = true,
             ShouldHandle = args => ValueTask.FromResult(IsTransientFailure(args.Outcome)),
@@ -56,14 +75,14 @@ public static class OpenSkyResilience
             // failed, i.e. one poll that used up all its retries. While open,
             // calls fail immediately instead of hammering a struggling API.
             FailureRatio = 0.5,
-            MinimumThroughput = 4,
+            MinimumThroughput = MaxRetryAttempts + 1,
             SamplingDuration = TimeSpan.FromMinutes(2),
-            // After 60 s one trial call is let through ("half-open").
-            BreakDuration = TimeSpan.FromSeconds(60),
+            // After the break one trial call is let through ("half-open").
+            BreakDuration = settings.BreakDuration,
             ShouldHandle = args => ValueTask.FromResult(IsTransientFailure(args.Outcome)),
         });
 
-        pipeline.AddTimeout(TimeSpan.FromSeconds(10));
+        pipeline.AddTimeout(settings.AttemptTimeout);
     }
 
     private static bool IsTransientFailure(Outcome<HttpResponseMessage> outcome) => outcome switch

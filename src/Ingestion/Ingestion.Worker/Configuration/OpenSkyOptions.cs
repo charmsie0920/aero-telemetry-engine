@@ -35,6 +35,12 @@ public sealed class OpenSkyOptions : IValidatableObject
     [Range(1, 3600)]
     public int PollIntervalSeconds { get; init; } = 30;
 
+    // Not in .env: only the tests (and later the chaos demo) point these at a
+    // fake OpenSky server.
+    public Uri ApiBaseUrl { get; init; } = new("https://opensky-network.org/api/");
+
+    public Uri AuthBaseUrl { get; init; } = new("https://auth.opensky-network.org/");
+
     public double BoundingBoxAreaSquareDegrees =>
         Math.Abs(BboxLamax - BboxLamin) * Math.Abs(BboxLomax - BboxLomin);
 

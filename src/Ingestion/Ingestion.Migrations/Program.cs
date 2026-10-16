@@ -1,12 +1,9 @@
-using DbUp;
+using Ingestion.Migrations;
 using Ingestion.Worker.Configuration;
 using Npgsql;
 
-// One-shot schema migrator: applies db/migrations/*.sql in name order and
-// records each script in telemetry.schemaversions so it never runs twice.
-// Exit code 0 = schema is up to date, 1 = something failed.
-
-const string Schema = "telemetry";
+// One-shot schema migrator: picks the target database, then hands over to
+// MigrationRunner. Exit code 0 = schema is up to date, 1 = something failed.
 
 // Mirrors the worker: Development targets the docker-compose Postgres,
 // everything else targets Supabase. They are separate variables so a
@@ -39,40 +36,15 @@ if (string.IsNullOrWhiteSpace(connectionString))
 var target = new NpgsqlConnectionStringBuilder(connectionString);
 Console.WriteLine($"Migrating {target.Host}:{target.Port}/{target.Database} as {target.Username} ({connectionStringVariable})");
 
-try
-{
-    // DbUp creates its journal table before running the first script, so the
-    // schema that holds the journal has to exist already.
-    await using var connection = new NpgsqlConnection(connectionString);
-    await connection.OpenAsync();
-    await using var command = new NpgsqlCommand($"CREATE SCHEMA IF NOT EXISTS {Schema}", connection);
-    await command.ExecuteNonQueryAsync();
-}
-catch (NpgsqlException ex)
-{
-    Console.Error.WriteLine($"Could not connect to the database: {ex.Message}");
-    return 1;
-}
-
-var upgrader = DeployChanges.To
-    .PostgresqlDatabase(connectionString)
-    .WithScriptsEmbeddedInAssembly(
-        typeof(Program).Assembly,
-        name => name.EndsWith(".sql", StringComparison.OrdinalIgnoreCase))
-    .JournalToPostgresqlTable(Schema, "schemaversions")
-    .WithTransactionPerScript()
-    .LogToConsole()
-    .Build();
-
-var result = upgrader.PerformUpgrade();
+var result = await MigrationRunner.RunAsync(connectionString);
 
 if (!result.Successful)
 {
-    Console.Error.WriteLine($"Migration failed in {result.ErrorScript?.Name}: {result.Error.Message}");
+    Console.Error.WriteLine(result.Error);
     return 1;
 }
 
-Console.WriteLine(result.Scripts.Any()
-    ? $"Applied {result.Scripts.Count()} script(s)."
+Console.WriteLine(result.ScriptsApplied > 0
+    ? $"Applied {result.ScriptsApplied} script(s)."
     : "Schema already up to date.");
 return 0;
