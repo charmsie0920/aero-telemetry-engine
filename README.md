@@ -4,8 +4,8 @@ A fault-tolerant pipeline that ingests live aircraft positions from the OpenSky 
 
 **Status: in progress.** The design is complete and the ingestion layer is being built now. [What works today](#what-works-today) lists exactly what exists; the rest of this page describes the design.
 
-**Stack so far:** C# / .NET 10 · PostgreSQL 17 (`pg_partman`, `pg_cron`) · Docker · DbUp · Polly · xUnit, Testcontainers, WireMock.Net<br>
-**Planned:** Python (ONNX Runtime) · Grafana · Terraform · AWS (EC2, S3) · GitHub Actions
+**Stack so far:** C# / .NET 10 · PostgreSQL 17 (`pg_partman`, `pg_cron`) · Docker Compose · Grafana · DbUp · Polly · xUnit, Testcontainers, WireMock.Net<br>
+**Planned:** Python (ONNX Runtime) · Terraform · AWS (EC2, S3) · GitHub Actions
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/architecture-dark.png">
@@ -22,22 +22,23 @@ Solid boxes are being built now; dashed boxes are planned. The editable source i
 | Collector | **Built.** Polls OpenSky every 30 s with a cached OAuth2 token, retries with backoff, a circuit breaker and rate-limit handling. Validates records, buffers them in a bounded queue and bulk-loads them into Postgres with no duplicates. Survives a database outage without losing data (tested). Health endpoints on port 8080. |
 | Tests | **Built.** 47 automated tests: parsing rules; OpenSky failure handling (401, 429, 5xx, timeouts, circuit breaker) against a fake server; database writes against a real throwaway Postgres in Docker, including duplicate handling and flushing on shutdown. |
 | Time partitioning | **Built.** Daily partitions managed by `pg_partman`, with an hourly `pg_cron` job that creates new ones and detaches those older than 48 hours. |
-| Anomaly detector, archiver, dashboard | Planned |
+| Dashboard | **Built.** Grafana, provisioned from files in [grafana/](grafana): live aircraft map plus pipeline health (polls per minute, new vs duplicate rows, failed polls, OpenSky credits, database size against the 500 MB budget). |
+| Containers | **Built.** Multi-stage Dockerfiles, non-root, with a `HEALTHCHECK`. `docker compose up` runs Postgres → migrations → collector → Grafana. `docker stop` shuts the collector down cleanly (tested). |
+| Anomaly detector, archiver | Planned |
 | AWS deployment (Terraform, GitHub Actions) | Planned |
 
 ## Run it
 
-You need Docker, the .NET 10 SDK and a free [OpenSky](https://opensky-network.org) API client. No AWS account is needed.
+You need Docker and a free [OpenSky](https://opensky-network.org) API client. No AWS account and no .NET SDK are needed.
 
 ```bash
-cp .env.example .env    # then fill in OPENSKY_CLIENT_ID and OPENSKY_CLIENT_SECRET
-docker compose up -d    # builds and starts local Postgres on port 5433
-dotnet run --project src/Ingestion/Ingestion.Migrations    # creates the schema
-dotnet run --project src/Ingestion/Ingestion.Worker        # polls every 30 s; Ctrl+C to stop
-dotnet test                                                # 47 tests; needs Docker for the database ones
+cp .env.example .env            # then fill in OPENSKY_CLIENT_ID and OPENSKY_CLIENT_SECRET
+docker compose up -d --build    # Postgres, migrations, collector and Grafana
 ```
 
-The collector logs one line per poll, such as `Poll 01a1...: 219 received, 219 valid, 195 new, 24 duplicates, 394 ms, 3995 credits left`. Once the dashboard is built, a single `docker compose up` will bring up the whole pipeline with a live map in Grafana.
+Open **http://localhost:3000**. The dashboard fills in as polls arrive every 30 seconds. `docker compose logs -f ingestion` shows one JSON log line per poll, and `curl http://localhost:8080/health/ready` reports the collector's health.
+
+To work on the code, install the .NET 10 SDK, stop the containerised collector (`docker compose stop ingestion`) and run `dotnet run --project src/Ingestion/Ingestion.Worker`. `dotnet test` runs the 47 tests (Docker needed for the database ones).
 
 <!-- A screenshot or short GIF of the Grafana dashboard goes here once it exists. -->
 

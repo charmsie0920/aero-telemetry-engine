@@ -17,7 +17,7 @@ Section numbers are referenced from code comments and CLAUDE.md. Don't renumber 
 
 ```
 PHASE:          1 — Ingestion and Storage
-CURRENT TASK:   MVP push, milestone M3 (Docker images + Grafana, P2.1/P2.7)
+CURRENT TASK:   MVP push, milestone M4 (rule-based + Isolation Forest scorer)
 LAST UPDATED:   2026-10-16
 DONE SINCE LAST UPDATE:
   - M1 done (P1.3-P1.8). The worker now polls every 30 s and writes to
@@ -36,7 +36,16 @@ DONE SINCE LAST UPDATE:
     writer flushing pending batches on shutdown.
   - Refactors for testability: MigrationRunner, AddOpenSky(), BatchWriter
     (SQL) split from WriterService (loop); OpenSky base URLs in options.
-  - Still to check in M3: SIGTERM flush end to end with `docker stop`.
+  - M3 done (P2.1, P2.7 locally). Multi-stage, non-root Dockerfiles for the
+    worker and migrator; worker HEALTHCHECK probes /health/ready via its own
+    binary (`healthcheck` argument; no curl in the image). `docker compose up
+    -d --build` runs postgres -> migrate -> ingestion -> Grafana 13.2.3.
+    Grafana data source and dashboard are provisioned from grafana/; all 13
+    panels verified returning data.
+  - Verified: `docker stop` on the worker -> poller stops, writer stops,
+    exit code 0 in ~1 s. GSS encryption disabled in the compose connection
+    string (Npgsql otherwise probes Kerberos in the slim image).
+  - Not done yet: Grafana on EC2 (login, read-only DB user) belongs to P2.8.
 BLOCKERS:
   - Supabase: need the SESSION-mode pooler connection string (the direct host
     is IPv6-only and unreachable from this machine). Migrations 0001-0006 are
@@ -225,13 +234,13 @@ Done (P0.1–P0.7): repo, OpenSky and Supabase accounts, worker scaffold, local 
 
 ### Phase 2 — Ops and Deployment
 
-- [ ] **P2.1** Multi-stage Dockerfile for the worker (non-root user, `HEALTHCHECK`).
+- [x] **P2.1** Multi-stage Dockerfile for the worker (non-root user, `HEALTHCHECK`).
 - [ ] **P2.2** Terraform: S3 state backend, VPC/security group, EC2 t3.small with instance role, ECR repos with lifecycle policies, S3 archive bucket, SSM parameters, AWS Budget alarm.
 - [ ] **P2.3** EC2 bootstrap (user data): install Docker + Compose, pull secrets from SSM, enable services on boot.
 - [ ] **P2.4** GitHub Actions `ci.yml`: build + test (.NET and Python), `ruff`, Docker build, Trivy scan. Runs on every PR.
 - [ ] **P2.5** GitHub OIDC trust with AWS (no access keys).
 - [ ] **P2.6** `deploy.yml`: on merge to `main`, push images to ECR tagged by git SHA, deploy via SSM Run Command, wait for readiness, roll back to the previous tag on failure.
-- [ ] **P2.7** Grafana with provisioned datasource and dashboards: live aircraft map, polls/min, records inserted, credits remaining, error rate, database size.
+- [x] **P2.7** Grafana with provisioned datasource and dashboards: live aircraft map, polls/min, records inserted, credits remaining, error rate, database size. (Local; EC2 hardening in P2.8.)
 - [ ] **P2.8** Deploy. Start the 14-day continuous-run clock.
 
 **Exit:** a merge to `main` deploys automatically; ingestion runs on EC2; Grafana shows live data; budget alarm is active.

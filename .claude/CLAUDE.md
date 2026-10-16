@@ -57,19 +57,22 @@ The owner can override this at any time with something like "just do it" or "app
 | `src/Ingestion/Ingestion.Tests/` | xUnit v3 tests: parser unit tests, WireMock tests for the OpenSky client, Testcontainers tests against a real Postgres. |
 | `db/migrations/` | Numbered SQL files (`0001_...sql`). The single source of truth for the schema. |
 | `db/postgres/Dockerfile` | The local Postgres image: Postgres 17 plus `pg_partman` and `pg_cron`. |
-| `docker-compose.yml` | Runs the local Postgres. Other services are commented out until they exist. |
+| `docker-compose.yml` | The whole local stack: Postgres → migrate (one-shot) → ingestion → Grafana. Dockerfiles live next to each project and build from the repo root. |
 | `docs/PRD.md` | Spec, roadmap, decision log. Keep it short; don't renumber its sections (code comments cite them). |
 | `docs/architecture.md`, `docs/diagrams/` | Diagrams, plain-English walkthrough, glossary. |
 | `docs/interview-notes.md` | Target roles, resume bullets, interview questions. |
 | `docs/adr/` | Decision records. |
-| `services/`, `training/`, `infra/`, `grafana/` | Empty placeholders for Phases 2 and 3. |
+| `grafana/` | Provisioned data source (`provisioning/`) and dashboard JSON (`dashboards/`). Edit the JSON; UI edits are not saved. |
+| `services/`, `training/`, `infra/` | Empty placeholders for Phases 2 and 3. |
 
 ## Commands
 
 Run from the repo root, in PowerShell.
 
 ```powershell
-docker compose up -d                                      # start local Postgres (host port 5433)
+docker compose up -d --build                              # whole stack; Grafana on http://localhost:3000
+docker compose logs -f ingestion                          # follow the containerised worker's logs
+docker compose up -d postgres                             # only Postgres, for running the .NET apps by hand
 dotnet build                                              # build everything
 dotnet run --project src/Ingestion/Ingestion.Migrations   # apply db/migrations
 dotnet run --project src/Ingestion/Ingestion.Worker       # run the collector; Ctrl+C to stop
@@ -92,6 +95,7 @@ The database tests build `db/postgres/Dockerfile` into a throwaway container and
 - **Migrations are append-only.** Never edit a migration that has been applied; add the next numbered file. DbUp records applied scripts in `telemetry.schemaversions` and skips them.
 - **Migrations are embedded from `db/migrations/`** into the migrator at build time. Don't copy SQL files into the project, and don't mount them into Postgres's `/docker-entrypoint-initdb.d`.
 - **Two separate databases.** `LOCAL_POSTGRES_CONNECTION_STRING` (Docker, used when `DOTNET_ENVIRONMENT=Development`) and `POSTGRES_CONNECTION_STRING` (Supabase). `dotnet run` uses Development through `launchSettings.json`. Never point local work at Supabase by accident.
+- **Run the worker in one place at a time:** either the `ingestion` container or `dotnet run`, never both. They would share one staging table (single writer, see `0002`) and double the OpenSky credit use. `docker compose stop ingestion` before `dotnet run`.
 - **Local Postgres is on host port 5433**, because a native Windows Postgres owns 5432. Another project's container, `recall-postgres`, also uses 5433 and starts with Docker; stop it first (`docker stop recall-postgres`).
 - **Supabase needs the session-mode pooler connection string.** The direct host is IPv6-only and unreachable from this machine.
 - **Secrets live in `.env`** (git-ignored). Never print, commit or paste its values. New variables also go in `.env.example` with an empty value.
